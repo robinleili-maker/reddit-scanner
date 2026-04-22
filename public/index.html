@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reddit Stock Scanner</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; padding: 2rem 1rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 2rem; }
+  .logo { width: 44px; height: 44px; border-radius: 50%; background: #ff4500; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+  h1 { font-size: 22px; font-weight: 600; }
+  .subtitle { font-size: 13px; color: #666; margin-top: 2px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem; }
+  .pill { padding: 6px 14px; border-radius: 999px; font-size: 13px; border: 1px solid #ddd; background: #fff; color: #555; cursor: pointer; transition: all .15s; user-select: none; }
+  .pill:hover { border-color: #aaa; }
+  .pill.on { background: #e8f0fe; border-color: #4285f4; color: #1a73e8; font-weight: 500; }
+  .scan-btn { margin-left: auto; padding: 8px 22px; border-radius: 8px; font-size: 14px; font-weight: 600; background: #1a1a1a; color: #fff; border: none; cursor: pointer; transition: opacity .15s; }
+  .scan-btn:hover { opacity: .85; }
+  .scan-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .warn { font-size: 12px; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem; display: none; }
+  .sort-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .sort-lbl { font-size: 13px; color: #666; }
+  select { font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; cursor: pointer; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: #666; align-items: center; flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .status { font-size: 13px; color: #666; margin-bottom: 1rem; min-height: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; transition: box-shadow .15s, border-color .15s; }
+  .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.08); border-color: #ccc; }
+  .rank { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .ticker { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .name { font-size: 12px; color: #777; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-wrap { margin: 10px 0 6px; height: 4px; background: #f0f0f0; border-radius: 99px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 99px; transition: width .7s ease; }
+  .meta { display: flex; justify-content: space-between; align-items: center; }
+  .mentions { font-size: 12px; color: #888; }
+  .sent { font-size: 11px; padding: 2px 9px; border-radius: 99px; font-weight: 500; }
+  .bull { background: #dcfce7; color: #166534; }
+  .bear { background: #fee2e2; color: #991b1b; }
+  .neut { background: #f3f4f6; color: #4b5563; }
+  .src-tags { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+  .src { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: #f5f5f5; color: #888; }
+  .ctx { font-size: 11px; color: #aaa; margin-top: 6px; line-height: 1.4; }
+  .ld::after { content: ''; animation: dots 1.2s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+  .api-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .api-row input { flex: 1; padding: 7px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; font-family: monospace; color: #1a1a1a; }
+  .api-row input:focus { outline: none; border-color: #4285f4; }
+  .api-lbl { font-size: 13px; color: #666; white-space: nowrap; }
+  .api-note { font-size: 11px; color: #aaa; margin-bottom: 1.25rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">📈</div>
+    <div>
+      <h1>Reddit Stock Scanner</h1>
+      <p class="subtitle">Live tickers from Reddit, analyzed by Claude</p>
+    </div>
+  </div>
+
+  <div class="api-row">
+    <span class="api-lbl">Anthropic API key</span>
+    <input type="password" id="apiKey" placeholder="sk-ant-..." />
+  </div>
+  <p class="api-note">Used only in this browser tab, never stored. Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
+
+  <div class="controls" id="pills">
+    <span class="pill on" data-sub="wallstreetbets">r/wallstreetbets</span>
+    <span class="pill on" data-sub="stocks">r/stocks</span>
+    <span class="pill on" data-sub="investing">r/investing</span>
+    <span class="pill" data-sub="StockMarket">r/StockMarket</span>
+    <span class="pill" data-sub="options">r/options</span>
+    <span class="pill" data-sub="pennystocks">r/pennystocks</span>
+    <span class="pill" data-sub="SecurityAnalysis">r/SecurityAnalysis</span>
+    <button class="scan-btn" id="scanBtn" onclick="startScan()">Scan now →</button>
+  </div>
+
+  <div class="warn" id="warn"></div>
+
+  <div class="sort-row" id="sortrow" style="display:none">
+    <span class="sort-lbl">Sort by</span>
+    <select id="sortsel" onchange="renderCards()">
+      <option value="mentions">Mentions</option>
+      <option value="sentiment">Sentiment</option>
+      <option value="alpha">Ticker A–Z</option>
+    </select>
+    <div class="legend">
+      <span><span class="dot" style="background:#22c55e"></span>Bullish</span>
+      <span><span class="dot" style="background:#ef4444"></span>Bearish</span>
+      <span><span class="dot" style="background:#9ca3af"></span>Neutral</span>
+    </div>
+  </div>
+
+  <div class="status" id="sbar"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+document.querySelectorAll('.pill').forEach(p => p.addEventListener('click', () => p.classList.toggle('on')));
+
+let stockData = [];
+
+const BL = new Set([
+  "A","I","U","BE","IT","ON","AT","IS","OR","AND","THE","FOR","NEW","CEO","IPO","ATH","IMO","WSB","ETF",
+  "SEC","FDA","USD","ALL","NOW","BUY","GET","PUT","TWO","ONE","ARE","WAS","HAS","BUT","NOT","CAN","ITS",
+  "OTC","EPS","AH","AM","PM","DD","OP","PE","US","UK","EU","AI","ML","TV","EV","GDP","CPI","FED","EST",
+  "YTD","LOL","TBH","YOLO","EOD","EOY","HODL","FOMO","AFAIK","TIL","TLDR","ETA","AMA","THIS","THAT",
+  "HAVE","FROM","BEEN","MORE","WILL","THEY","THEM","THEN","WHEN","WITH","WHAT","YOUR","JUST","SOME",
+  "YEAR","WEEK","TIME","LIKE","ALSO","THAN","BACK","ONLY","INTO","AFTER","THEIR","THERE","ABOUT","OTHER",
+  "WOULD","COULD","GOING","PRICE","STOCK","CALL","CALLS","PUTS","SHORT","LONG","BEAR","BULL","HOLD",
+  "SELL","LOSS","GAIN","RISK","CASH","FUND","HIGH","DOWN","DOES","SAYS","MUCH","OVER","NEXT","LAST",
+  "MAKE","MADE","SAME","GOOD","EVEN","WELL","TAKE","COME","USED","SAID","EACH","BOTH","MANY","MOST",
+  "BEST","REAL","FULL","HUGE","MAIN","PART","PLAY","MOVE","NEWS","RATE","TERM","COST","BASE","PLAN",
+  "CASE","DAYS","DONE","PAID","PAST","SAFE","SIDE","SLOW","SOON","ZERO","POINT","THINK","TOTAL","VALUE",
+  "WHERE","WHICH","MONEY","TRADE","SHARE","HEDGE","INDEX","BOND","DEBT","LOAN","BANK","CORP","MISS",
+  "YOY","CHART","WATCH","AGREE","WRONG","GREAT","MAJOR","SMALL","LARGE","MARKET","REPORT","BEATS",
+  "SHARES","BOUGHT","THESE","THOSE","HERE","VERY","STILL","AGAIN","AROUND","BEFORE","BELOW","ABOVE",
+  "MIGHT","SHOULD","THOUGH","WHILE","SINCE","OPEN","CLOSE","HELP","NEED","WANT","KNOW","LOOK",
+  "GIVE","KEEP","FEEL","SEEM","TURN","LEFT","LESS","ONCE","SURE","FIND","SHOW","HEAR","RUN","LIVE",
+  "MEAN","TELL","WORK","WENT","CAME","THESE","THING","THINGS","PEOPLE","ANYONE","SOMEONE","EVERYONE"
+]);
+
+function setSbar(msg, loading = false) {
+  document.getElementById('sbar').innerHTML = loading ? `<span class="ld">${msg}</span>` : msg;
+}
+
+async function fetchSub(sub) {
+  try {
+    const r = await fetch(`/api/reddit?sub=${sub}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    return { sub, posts: d.data.children.map(c => c.data), ok: true };
+  } catch (e) {
+    return { sub, posts: [], ok: false, err: e.message };
+  }
+}
+
+function extractTickers(results) {
+  const counts = {}, sources = {};
+  const re = /\$([A-Z]{1,5})\b|\b([A-Z]{2,5})\b/g;
+  for (const { sub, posts } of results) {
+    for (const p of posts) {
+      const txt = `${p.title} ${p.selftext || ''}`;
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const t = m[1] || m[2];
+        if (BL.has(t) || t.length < 2) continue;
+        counts[t] = (counts[t] || 0) + 1;
+        if (!sources[t]) sources[t] = new Set();
+        sources[t].add(sub);
+      }
+    }
+  }
+  return Object.entries(counts)
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([ticker, mentions]) => ({ ticker, mentions, sources: [...sources[ticker]] }));
+}
+
+async function enrich(tickers, results, apiKey) {
+  const titles = results
+    .flatMap(r => r.posts)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 40)
+    .map(p => p.title)
+    .join('\n');
+
+  const prompt = `You are a financial analyst. Below are top Reddit post titles from investing subreddits, plus the most-mentioned tickers extracted from those posts.
+
+POST TITLES:
+${titles}
+
+TICKERS (mention counts):
+${JSON.stringify(tickers.map(t => ({ ticker: t.ticker, mentions: t.mentions })))}
+
+For each ticker that is a real publicly-traded company, return a JSON array (no markdown, no preamble, valid JSON only):
+[{"ticker":"TSLA","name":"Tesla Inc.","sentiment":"bullish","sentimentScore":0.72,"context":"One sentence why it is being discussed based on the posts above"}]
+
+Skip anything that is not a real stock ticker. Return only the JSON array.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-opus-4-5",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'API error ' + res.status);
+  }
+
+  const d = await res.json();
+  const txt = d.content.map(i => i.text || "").join("");
+  return JSON.parse(txt.replace(/```json|```/g, "").trim());
+}
+
+async function startScan() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { alert('Please enter your Anthropic API key first.'); return; }
+
+  const subs = [...document.querySelectorAll('.pill.on')].map(p => p.dataset.sub);
+  if (!subs.length) { alert('Select at least one subreddit.'); return; }
+
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  document.getElementById('sortrow').style.display = 'none';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('warn').style.display = 'none';
+  stockData = [];
+
+  setSbar(`Fetching posts from ${subs.length} subreddit${subs.length > 1 ? 's' : ''}`, true);
+
+  const all = await Promise.all(subs.map(fetchSub));
+  const ok = all.filter(r => r.ok);
+  const fail = all.filter(r => !r.ok);
+
+  if (fail.length) {
+    const w = document.getElementById('warn');
+    w.style.display = 'block';
+    w.textContent = `Could not fetch: ${fail.map(f => 'r/' + f.sub).join(', ')}. Results shown from the rest.`;
+  }
+
+  if (!ok.length) {
+    setSbar('Could not fetch any subreddits. Check your internet connection.');
+    btn.disabled = false;
+    return;
+  }
+
+  const totalPosts = ok.reduce((n, r) => n + r.posts.length, 0);
+  setSbar(`Scanned ${totalPosts} posts — extracting tickers`, true);
+  const tickers = extractTickers(ok);
+
+  if (!tickers.length) {
+    setSbar('No tickers found. Try selecting more subreddits.');
+    btn.disabled = false;
+    return;
+  }
+
+  setSbar(`Found ${tickers.length} candidate tickers — analyzing sentiment`, true);
+
+  try {
+    const enriched = await enrich(tickers, ok, apiKey);
+    stockData = enriched.map(e => {
+      const base = tickers.find(t => t.ticker === e.ticker) || {};
+      return { ...base, ...e };
+    }).filter(s => s.mentions);
+
+    setSbar(`Live data from ${ok.map(r => 'r/' + r.sub).join(', ')} — ${stockData.length} stocks found`);
+    document.getElementById('sortrow').style.display = 'flex';
+    renderCards();
+  } catch (e) {
+    setSbar('Error: ' + e.message);
+  }
+
+  btn.disabled = false;
+}
+
+function renderCards() {
+  const sort = document.getElementById('sortsel').value;
+  let s = [...stockData];
+  if (sort === 'mentions') s.sort((a, b) => b.mentions - a.mentions);
+  else if (sort === 'sentiment') s.sort((a, b) => b.sentimentScore - a.sentimentScore);
+  else s.sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+  const mx = Math.max(...s.map(x => x.mentions));
+  const bc = { bullish: '#22c55e', bearish: '#ef4444', neutral: '#9ca3af' };
+
+  document.getElementById('results').innerHTML = `<div class="grid">${s.map((x, i) => `
+    <div class="card">
+      <div class="rank">#${i + 1}</div>
+      <div class="ticker">$${x.ticker}</div>
+      <div class="name">${x.name || ''}</div>
+      <div class="bar-wrap"><div class="bar" style="width:${Math.round((x.mentions / mx) * 100)}%;background:${bc[x.sentiment] || '#9ca3af'}"></div></div>
+      <div class="meta">
+        <span class="mentions">${x.mentions} mentions</span>
+        <span class="sent ${x.sentiment === 'bullish' ? 'bull' : x.sentiment === 'bearish' ? 'bear' : 'neut'}">${x.sentiment || 'neutral'}</span>
+      </div>
+      ${x.sources?.length ? `<div class="src-tags">${x.sources.map(src => `<span class="src">r/${src}</span>`).join('')}</div>` : ''}
+      ${x.context ? `<div class="ctx">${x.context}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+</script>
+</body>
+</html>
